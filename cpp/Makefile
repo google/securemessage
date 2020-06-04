@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-PROTOBUF_DIR=third-party/google/protobuf/protobuf-2.5.0/
-PROTOBUF_HDRS=third-party/google/protobuf/include/
-PROTOBUF_LIBS=third-party/google/protobuf/lib/
-PROTOC=third-party/google/protobuf/bin/protoc
-GTEST_DIR=third-party/google/gtest/gtest-1.7.0/
-GTEST_HDRS=third-party/google/gtest/gtest-1.7.0/include
-GTEST_LIBS=third-party/google/gtest/
-GTEST_MAIN=third-party/google/gtest/gtest-1.7.0/src/gtest_main.cc
-SM_SRC=src/securemessage/
-SM_TEST=test/securemessage/
+THIS_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+PROJ_PATH := $(shell cd $(THIS_PATH)/..;pwd)
+OUT_DIR=$(PROJ_PATH)/out
+PROTOBUF_DIR=$(PROJ_PATH)/third_party/protobuf/
+PROTOBUF_HDRS=$(PROJ_PATH)/out/include/
+PROTOBUF_LIBS=$(PROJ_PATH)/out/lib/
+PROTOC=$(PROJ_PATH)/out/bin/protoc
+GTEST_DIR=$(PROJ_PATH)/third_party/gtest/googletest
+GTEST_HDRS=$(GTEST_DIR)/include
+GTEST_LIBS=$(PROJ_PATH)/out/lib/
+GTEST_MAIN=$(GTEST_DIR)/src/gtest_main.cc
+SM_SRC=$(THIS_PATH)/src/securemessage/
+SM_TEST=$(THIS_PATH)/test/securemessage/
+PROTO_DIR=$(PROJ_PATH)/proto
 CC=g++
 
 TEST_STDERR=test_stderr.log
@@ -129,11 +133,8 @@ builder_openssl_test: builder_parser_test.o ${PROJ_OPENSSL_OBJECT_FILES} ${GTEST
 securemessage.pb.o: securemessage.pb.cc securemessage.pb.h
 	${CC} ${CFLAGS} -I ${PROTOBUF_HDRS} -L ${PROTOBUF_LIBS} -c $< -lprotobuf
 
-securemessage.pb.cc: securemessage.proto
-	${PROTOC} --cpp_out=. $<
-
-securemessage.pb.h: securemessage.proto
-	${PROTOC} --cpp_out=. $<
+securemessage.pb.cc securemessage.pb.h: $(PROTO_DIR)/securemessage.proto
+	${PROTOC} --cpp_out=. --proto_path=$(PROTO_DIR) $<
 
 
 ##################################
@@ -152,13 +153,25 @@ public_key_proto_util_openssl_test: ${SM_TEST}/public_key_proto_util_test.cc ${P
 # Third Party Dependencides
 deps: protobuf gtest
 
-protobuf:
-	cd ${PROTOBUF_DIR}; ./configure --prefix=`pwd`/../
-	make -C ${PROTOBUF_DIR}
-	make -C ${PROTOBUF_DIR} check
-	make -C ${PROTOBUF_DIR} install
+$(OUT_DIR):
+	mkdir -p $(OUT_DIR)
 
-gtest:
+submodule:
+	git submodule update --init --recursive
+
+$(PROTOBUF_DIR)/.configure: submodule
+	cd ${PROTOBUF_DIR}; ./autogen.sh
+
+$(PROTOBUF_DIR)/third_party/googletest/googletest:
+	cd ${PROTOBUF_DIR}; git submodule init; git submodule update
+
+protobuf: $(PROTOBUF_DIR)/.configure | $(OUT_DIR)
+	cd ${PROTOBUF_DIR}; ./configure --prefix=$(OUT_DIR)
+	make -j16 -C ${PROTOBUF_DIR}
+	make -j16 -C ${PROTOBUF_DIR} check
+	make -j16 -C ${PROTOBUF_DIR} install
+
+gtest: submodule
 	${CC} -isystem ${GTEST_DIR}/include -I ${GTEST_DIR} -pthread -c ${GTEST_DIR}/src/gtest-all.cc
 	ar -rv libgtest.a gtest-all.o
 	mv libgtest.a gtest-all.o ${GTEST_LIBS}

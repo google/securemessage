@@ -16,9 +16,11 @@
 
 #include <openssl/aes.h>
 #include <openssl/bn.h>
+#include <openssl/crypto.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <openssl/obj_mac.h>
 #include <openssl/ossl_typ.h>
 #include <openssl/rand.h>
@@ -28,6 +30,7 @@
 #include <stddef.h>
 #include <climits>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 
@@ -55,16 +58,14 @@ static unique_ptr<ByteBuffer> PublicKeyToBytes(EC_KEY *eckey) {
   unsigned char *pub_key_buffer = NULL;
   int return_code = i2d_EC_PUBKEY(eckey, &pub_key_buffer);
   if (return_code != pub_key_len) {
-    if (pub_key_buffer != NULL) {
-      free(pub_key_buffer);
-    }
+    OPENSSL_free(pub_key_buffer);
     Util::LogErrorAndAbort("i2d_EC_PUBKEY returned an unexpected value");
     return nullptr;
   }
 
   auto public_key_bytes = unique_ptr<ByteBuffer>(new ByteBuffer(
       pub_key_buffer, pub_key_len));
-  free(pub_key_buffer);
+  OPENSSL_free(pub_key_buffer);
   return public_key_bytes;
 }
 
@@ -120,7 +121,7 @@ unique_ptr<ByteBuffer> CryptoOps::Sha256(const ByteBuffer& message) {
 
   // Create a new message digest context and initialize it
   unique_ptr<EVP_MD_CTX, void (*)(EVP_MD_CTX *)> mdctx(EVP_MD_CTX_create(),
-                                                       EVP_MD_CTX_destroy);
+                                                       EVP_MD_CTX_free);
 
   // Initialize the digest context
   return_code = EVP_DigestInit_ex(mdctx.get(), EVP_sha256(), NULL);
@@ -147,6 +148,47 @@ unique_ptr<ByteBuffer> CryptoOps::Sha256(const ByteBuffer& message) {
   return unique_ptr<ByteBuffer>(new ByteBuffer(md_value, md_length));
 }
 
+unique_ptr<ByteBuffer> CryptoOps::Sha512(const ByteBuffer &message) {
+  if (message.size() == 0) {
+    Util::LogError("Message too short");
+    return nullptr;
+  }
+
+  // Create an empty digest with enough space. OpenSSL will tell us how much it
+  // actually wrote.
+  uint8_t md_value[EVP_MAX_MD_SIZE];
+  unsigned int md_length = 0;
+  int return_code;
+
+  // Create a new message digest context and initialize it
+  unique_ptr<EVP_MD_CTX, void (*)(EVP_MD_CTX *)> mdctx(EVP_MD_CTX_create(),
+                                                       EVP_MD_CTX_free);
+
+  // Initialize the digest context
+  return_code = EVP_DigestInit_ex(mdctx.get(), EVP_sha512(), NULL);
+  if (return_code != 1) {
+    Util::LogErrorAndAbort("Could not initialize SHA512");
+    return nullptr;
+  }
+
+  // Set the message
+  return_code =
+      EVP_DigestUpdate(mdctx.get(), message.ImmutableUInt8(), message.size());
+  if (return_code != 1) {
+    Util::LogErrorAndAbort("Could not set message to hash in SHA512");
+    return nullptr;
+  }
+
+  // Execute the digest
+  return_code = EVP_DigestFinal_ex(mdctx.get(), md_value, &md_length);
+  if (return_code != 1) {
+    Util::LogErrorAndAbort("Could not set execute SHA512");
+    return nullptr;
+  }
+
+  return unique_ptr<ByteBuffer>(new ByteBuffer(md_value, md_length));
+}
+
 unique_ptr<ByteBuffer> CryptoOps::Sha256hmac(const ByteBuffer& key,
                                              const ByteBuffer& message) {
   // Sanity check
@@ -155,7 +197,7 @@ unique_ptr<ByteBuffer> CryptoOps::Sha256hmac(const ByteBuffer& key,
     return nullptr;
   }
 
-  // Overflow check because of EVP_PKEY_new_mac_key function signature
+  // Overflow check because of HMAC function signature
   if (key.size() > INT_MAX) {
     Util::LogError("Key too big");
     return nullptr;
@@ -163,54 +205,18 @@ unique_ptr<ByteBuffer> CryptoOps::Sha256hmac(const ByteBuffer& key,
 
   // Create an empty digest with enough space. OpenSSL will tell us how much it
   // actually wrote.
-  uint8_t md_value[kSha256DigestSize];
-  size_t md_length = 0;
+  uint8_t md_value[EVP_MAX_MD_SIZE];
+  unsigned md_length;
 
-  int return_code;  // Used to check all of OpenSSL's return codes
-
-  // Create the HMAC key structure
-  EvpKeyPtr hmacKey(
-      EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, NULL, key.ImmutableUInt8(),
-                           static_cast<int>(key.size())));
-  if (hmacKey.get() == NULL) {
-    Util::LogErrorAndAbort("Could not create HMAC PKEY");
+  if (HMAC(EVP_sha256(), key.ImmutableUInt8(), static_cast<int>(key.size()),
+           message.ImmutableUInt8(), message.size(), md_value, &md_length) ==
+      NULL) {
+    Util::LogErrorAndAbort("HMAC failed");
     return nullptr;
   }
 
-  // Create a new message digest context and initialize it
-  unique_ptr<EVP_MD_CTX, void (*)(EVP_MD_CTX *)> mdctx(EVP_MD_CTX_create(),
-                                                       EVP_MD_CTX_destroy);
-  return_code =
-      EVP_DigestSignInit(mdctx.get(), NULL, EVP_sha256(), NULL, hmacKey.get());
-  if (return_code != 1) {
-    Util::LogErrorAndAbort("Could not initialize HMAC");
-    return nullptr;
-  }
-
-  // Set the message to digest
-  return_code = EVP_DigestSignUpdate(mdctx.get(), message.ImmutableUInt8(),
-                                     message.size());
-  if (return_code != 1) {
-    Util::LogErrorAndAbort("Could not set data to HMAC");
-    return nullptr;
-  }
-
-  // Compute the digest length and populate the md_length value.  This lets us
-  // sanity check the expected digest length.
-  return_code = EVP_DigestSignFinal(mdctx.get(), NULL, &md_length);
-  if (return_code != 1) {
-    Util::LogErrorAndAbort("Could not determine HMAC length");
-    return nullptr;
-  }
   if (md_length != kSha256DigestSize) {
     Util::LogErrorAndAbort("HMAC returned an unexpected result");
-    return nullptr;
-  }
-
-  // Finally, compute the digest.
-  return_code = EVP_DigestSignFinal(mdctx.get(), md_value, &md_length);
-  if (return_code != 1) {
-    Util::LogErrorAndAbort("Could not execute HMAC");
     return nullptr;
   }
 
@@ -246,9 +252,14 @@ unique_ptr<ByteBuffer> CryptoOps::Aes256CBCDecrypt(
   int return_code;                          // OpenSSL error checking
 
   // Initialize the cipher context
-  EVP_CIPHER_CTX ctx;
-  EVP_CIPHER_CTX_init(&ctx);
-  return_code = EVP_DecryptInit_ex(&ctx, EVP_aes_256_cbc(), NULL,
+  std::unique_ptr<EVP_CIPHER_CTX, void (*)(EVP_CIPHER_CTX *)>
+      scoped_ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+  EVP_CIPHER_CTX* ctx = scoped_ctx.get();
+  if (ctx == nullptr) {
+    Util::LogErrorAndAbort("Could not allocate AES cipher context");
+    return nullptr;
+  }
+  return_code = EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL,
                                    decryptionKey.data().ImmutableUInt8(),
                                    iv.ImmutableUInt8());
   if (return_code != 1) {
@@ -259,25 +270,23 @@ unique_ptr<ByteBuffer> CryptoOps::Aes256CBCDecrypt(
   // Decrypt data
   int plaintext_bytes_written = 0;
   return_code =
-      EVP_DecryptUpdate(&ctx,
+      EVP_DecryptUpdate(ctx,
                         plaintext.MutableUInt8(),
                         &plaintext_bytes_written,
                         ciphertext.ImmutableUInt8(),
                         static_cast<int>(ciphertext.size()));
   if (return_code != 1) {
     Util::LogError("Could not decrypt data using AES");
-    EVP_CIPHER_CTX_cleanup(&ctx);
     return nullptr;
   }
 
   // Handle the last block and padding
   int last_block_bytes_written = 0;
   return_code = EVP_DecryptFinal_ex(
-      &ctx, plaintext.MutableUInt8() + plaintext_bytes_written,
+      ctx, plaintext.MutableUInt8() + plaintext_bytes_written,
       &last_block_bytes_written);
   if (return_code != 1) {
     Util::LogError("Could not decrypt data using AES; likely a padding error");
-    EVP_CIPHER_CTX_cleanup(&ctx);
     return nullptr;
   }
 
@@ -288,9 +297,6 @@ unique_ptr<ByteBuffer> CryptoOps::Aes256CBCDecrypt(
     Util::LogErrorAndAbort("Unexpected amount of bytes written by AES Encrypt");
     return nullptr;
   }
-
-  // Cleanup
-  EVP_CIPHER_CTX_cleanup(&ctx);
 
   return unique_ptr<ByteBuffer>(
       new ByteBuffer(plaintext.ImmutableUInt8(),
@@ -333,9 +339,14 @@ unique_ptr<ByteBuffer> CryptoOps::Aes256CBCEncrypt(
       new ByteBuffer(plaintext.size() + padding_size));
 
   // Initialize the cipher context
-  EVP_CIPHER_CTX ctx;
-  EVP_CIPHER_CTX_init(&ctx);
-  int return_code = EVP_EncryptInit_ex(&ctx, EVP_aes_256_cbc(), NULL,
+  std::unique_ptr<EVP_CIPHER_CTX, void (*)(EVP_CIPHER_CTX *)>
+      scoped_ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+  EVP_CIPHER_CTX* ctx = scoped_ctx.get();
+  if (ctx == nullptr) {
+    Util::LogErrorAndAbort("Could not allocate AES cipher context");
+    return nullptr;
+  }
+  int return_code = EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL,
                                        encryptionKey.data().ImmutableUInt8(),
                                        iv.ImmutableUInt8());
   if (return_code != 1) {
@@ -347,7 +358,7 @@ unique_ptr<ByteBuffer> CryptoOps::Aes256CBCEncrypt(
   int full_block_bytes_written = 0;
   int last_block_bytes_written = 0;
   return_code = EVP_EncryptUpdate(
-      &ctx, ciphertext->MutableUInt8(), &full_block_bytes_written,
+      ctx, ciphertext->MutableUInt8(), &full_block_bytes_written,
       plaintext.ImmutableUInt8(), static_cast<int>(plaintext.size()));
   if (return_code != 1) {
     Util::LogErrorAndAbort("Error during encryption");
@@ -355,7 +366,7 @@ unique_ptr<ByteBuffer> CryptoOps::Aes256CBCEncrypt(
   }
 
   return_code = EVP_EncryptFinal_ex(
-      &ctx, ciphertext->MutableUInt8() + full_block_bytes_written,
+      ctx, ciphertext->MutableUInt8() + full_block_bytes_written,
       &last_block_bytes_written);
   if (return_code != 1) {
     Util::LogErrorAndAbort("Error during encryption");
@@ -369,9 +380,6 @@ unique_ptr<ByteBuffer> CryptoOps::Aes256CBCEncrypt(
     Util::LogErrorAndAbort("Unexpected amount of bytes written by AES Encrypt");
     return nullptr;
   }
-
-  // Cleanup
-  EVP_CIPHER_CTX_cleanup(&ctx);
 
   return ciphertext;
 }
@@ -434,7 +442,7 @@ unique_ptr<ByteBuffer> CryptoOps::EcdsaP256Sha256Sign(
 
   // Create a new message digest context and initialize it.
   unique_ptr<EVP_MD_CTX, void (*)(EVP_MD_CTX *)> mdctx(EVP_MD_CTX_create(),
-                                                       EVP_MD_CTX_destroy);
+                                                       EVP_MD_CTX_free);
   EVP_MD_CTX_init(mdctx.get());
   int return_code = EVP_SignInit_ex(mdctx.get(), EVP_sha256(), NULL);
   if (return_code != 1) {
@@ -492,7 +500,7 @@ bool CryptoOps::EcdsaP256Sha256Verify(const PublicKey& public_key,
   // Make sure we don't overflow EVP_VerifyUpdate
   if (data.size() > UINT_MAX) {
     Util::LogError("Data too big to verify");
-    return nullptr;
+    return false;
   }
 
   EvpKeyPtr extracted_public_evpkey = CreateEvpPublicKey(public_key);
@@ -502,7 +510,7 @@ bool CryptoOps::EcdsaP256Sha256Verify(const PublicKey& public_key,
 
   // Create a verify digest context and initialize it
   unique_ptr<EVP_MD_CTX, void (*)(EVP_MD_CTX *)> verifyctx(EVP_MD_CTX_create(),
-                                                           EVP_MD_CTX_destroy);
+                                                           EVP_MD_CTX_free);
   EVP_MD_CTX_init(verifyctx.get());
   int return_code = EVP_VerifyInit_ex(verifyctx.get(), EVP_sha256(), NULL);
   if (return_code != 1) {
@@ -642,7 +650,7 @@ unique_ptr<ByteBuffer> CryptoOps::Rsa2048Sha256Sign(
 
   // Set up a new signature context
   unique_ptr<EVP_MD_CTX, void (*)(EVP_MD_CTX *)> ctx(EVP_MD_CTX_create(),
-                                                     EVP_MD_CTX_destroy);
+                                                     EVP_MD_CTX_free);
   if (ctx.get() == NULL) {
     Util::LogErrorAndAbort("Could not create signature context");
     return nullptr;
@@ -696,13 +704,13 @@ bool CryptoOps::Rsa2048Sha256Verify(const PublicKey& public_key,
                                     const ByteBuffer& data) {
   if (public_key.algorithm() != KeyAlgorithm::RSA_KEY ||
       public_key.data().size() == 0 || data.size() == 0) {
-    return nullptr;
+    return false;
   }
 
   // Make sure we don't overflow EVP_VerifyUpdate
   if (data.size() > UINT_MAX) {
     Util::LogError("Data too big to verify");
-    return nullptr;
+    return false;
   }
 
   int return_code;
@@ -734,7 +742,7 @@ bool CryptoOps::Rsa2048Sha256Verify(const PublicKey& public_key,
 
   // Create verification context
   unique_ptr<EVP_MD_CTX, void (*)(EVP_MD_CTX *)> verifyctx(EVP_MD_CTX_create(),
-                                                           EVP_MD_CTX_destroy);
+                                                           EVP_MD_CTX_free);
   EVP_MD_CTX_init(verifyctx.get());
 
   // Initialize it
@@ -909,8 +917,13 @@ unique_ptr<CryptoOps::PublicKey> CryptoOps::ImportRsa2048Key(const string& n,
       BN_bin2bn(e_data, static_cast<unsigned int>(e_str.length()), NULL),
       BN_free);
 
-  rsa->n = n_value.release();
-  rsa->e = e_value.release();
+  BIGNUM* rsa_n = n_value.release();
+  BIGNUM* rsa_e = e_value.release();
+  int result = RSA_set0_key(rsa.get(), rsa_n, rsa_e, nullptr);
+  if (!result) {
+    Util::LogErrorAndAbort("unable to set public key components");
+    return nullptr;
+  }
 
   unsigned char *public_key_buffer = NULL;
   int public_key_len = i2d_RSA_PUBKEY(rsa.get(), &public_key_buffer);
@@ -926,7 +939,7 @@ unique_ptr<CryptoOps::PublicKey> CryptoOps::ImportRsa2048Key(const string& n,
   }
 
   ByteBuffer public_key_bytes(public_key_buffer, public_key_len);
-  free(public_key_buffer);
+  OPENSSL_free(public_key_buffer);
 
   return unique_ptr<PublicKey>(
       new PublicKey(public_key_bytes, KeyAlgorithm::RSA_KEY));
@@ -950,21 +963,25 @@ bool CryptoOps::ExportRsa2048Key(const CryptoOps::PublicKey& key,
     return false;
   }
 
-  if (rsa->n == NULL || rsa->e == NULL) {
+  const BIGNUM* rsa_n;
+  const BIGNUM* rsa_e;
+  RSA_get0_key(rsa.get(), &rsa_n, &rsa_e, nullptr);
+
+  if (rsa_n == NULL || rsa_e == NULL) {
     Util::LogErrorAndAbort("error, couldn't get the public key details");
     return false;
   }
 
-  if (static_cast<size_t>(BN_num_bytes(rsa->e)) > sizeof(*e)) {
+  if (static_cast<size_t>(BN_num_bytes(rsa_e)) > sizeof(*e)) {
     Util::LogErrorAndAbort("error, invalid exponent size");
     return false;
   }
 
-  ByteBuffer n_bytes(BN_num_bytes(rsa->n));
-  ByteBuffer e_bytes(BN_num_bytes(rsa->e));
+  ByteBuffer n_bytes(BN_num_bytes(rsa_n));
+  ByteBuffer e_bytes(BN_num_bytes(rsa_e));
 
-  BN_bn2bin(rsa->n, n_bytes.MutableUChar());
-  BN_bn2bin(rsa->e, e_bytes.MutableUChar());
+  BN_bn2bin(rsa_n, n_bytes.MutableUChar());
+  BN_bn2bin(rsa_e, e_bytes.MutableUChar());
 
   // Make sure the modulus bytes are in two's complement by ensuring the
   // leading bit is not 1.
@@ -1058,7 +1075,7 @@ unique_ptr<CryptoOps::KeyPair> CryptoOps::GenerateEcP256KeyPair() {
     return nullptr;
   }
   ByteBuffer private_key_bytes(priv_key_buffer, priv_key_len);
-  free(priv_key_buffer);
+  OPENSSL_free(priv_key_buffer);
 
   return unique_ptr<KeyPair>(
       new KeyPair(unique_ptr<PublicKey>(new PublicKey(
@@ -1108,7 +1125,7 @@ unique_ptr<CryptoOps::KeyPair> CryptoOps::GenerateRsa2048KeyPair() {
     return nullptr;
   }
   ByteBuffer private_key(private_key_buffer, private_key_len);
-  free(private_key_buffer);
+  OPENSSL_free(private_key_buffer);
 
   // Store public key
   unsigned char *public_key_buffer = NULL;
@@ -1123,12 +1140,29 @@ unique_ptr<CryptoOps::KeyPair> CryptoOps::GenerateRsa2048KeyPair() {
     return nullptr;
   }
   ByteBuffer public_key(public_key_buffer, public_key_len);
-  free(public_key_buffer);
+  OPENSSL_free(public_key_buffer);
 
   return unique_ptr<KeyPair>(new KeyPair(
       unique_ptr<PublicKey>(new PublicKey(public_key, KeyAlgorithm::RSA_KEY)),
       unique_ptr<PrivateKey>(
           new PrivateKey(private_key, KeyAlgorithm::RSA_KEY))));
+}
+
+unique_ptr<ByteBuffer> CryptoOps::SecureRandom(size_t length) {
+  if (length < 1) {
+    Util::LogError("SecureRandom: length must be greater than zero.");
+    return nullptr;
+  }
+
+  unique_ptr<ByteBuffer> random_bytes(new ByteBuffer(length));
+
+  if (RAND_bytes(random_bytes->MutableUInt8(),
+                 static_cast<unsigned int>(length)) != 1) {
+    Util::LogError("SecureRandom: Failed to generate random bytes.");
+    return nullptr;
+  }
+
+  return random_bytes;
 }
 
 }  // namespace securemessage

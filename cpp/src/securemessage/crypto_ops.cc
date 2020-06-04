@@ -357,7 +357,7 @@ bool CryptoOps::Verify(SigType sigType,
     case HMAC_SHA256: {
       if (verificationKey.type() != SECRET) {
         Util::LogError("Invalid signing key type");
-        return nullptr;
+        return false;
       }
       // Compute expected signature
       unique_ptr<SecretKey> derived_key = DeriveAes256KeyFor(

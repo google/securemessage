@@ -29,15 +29,15 @@ class Util {
   //
   // Makes a new std::unique_ptr<string> by taking input data and a length
   //
-  static std::unique_ptr<string> MakeUniquePtrString(const void* data,
-                                                     size_t length);
+  static std::unique_ptr<std::string> MakeUniquePtrString(const void* data,
+                                                          size_t length);
 
   //
   // Providing a level of indirection when logging error message.  The idea
   // being that this can be swapped out in platforms that log error messages in
   // some more useful way.
   //
-  static void LogError(const string& error_message);
+  static void LogError(const std::string& error_message);
 
   //
   // Provides a level of indirection for managing really bad errors.  A call of
@@ -49,7 +49,7 @@ class Util {
   //
   // This function should never return.
   //
-  static void LogErrorAndAbort[[noreturn]](const string& error_message);
+  static void LogErrorAndAbort [[noreturn]] (const std::string& error_message);
 
  private:
   virtual ~Util();

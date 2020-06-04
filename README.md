@@ -124,5 +124,12 @@ increased efficiency when multiple messages are concerned.  Note that it is
 easy to authenticate the Diffie-Hellman keys using a signature-only
 SecureMessage wrapping with a public key signature scheme.
 
+# Checkout instructions
+```
+git clone https://github.com/google/securemessage
+cd securemessage
+git submodule update --init --recursive
+```
+
 # Compilation and Use
 See language specific implementation directories
