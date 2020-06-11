@@ -19,7 +19,7 @@
 
 #include <memory>
 
-#include "securemessage.pb.h"
+#include "proto/securemessage.pb.h"
 
 #include "securemessage/byte_buffer.h"
 #include "securemessage/common.h"
@@ -59,7 +59,7 @@ class SecureMessageBuilder {
   // Can be used with either cleartext or signcrypted messages, but is intended
   // primarily for use with signcrypted messages.
   //
-  SecureMessageBuilder* SetPublicMetadata(const string& public_metadata);
+  SecureMessageBuilder* SetPublicMetadata(const std::string& public_metadata);
 
   //
   // The recipient of the {@link SecureMessage} should be able to uniquely
@@ -71,7 +71,8 @@ class SecureMessageBuilder {
   // <p>
   // Note that this value is sent <em>UNENCRYPTED</em> in all cases.
   //
-  SecureMessageBuilder* SetVerificationKeyId(const string& verification_key_id);
+  SecureMessageBuilder* SetVerificationKeyId(
+      const std::string& verification_key_id);
 
   //
   // To be used only with {@link #BuildSignCryptedMessage(CryptoOps::Key,
@@ -80,7 +81,8 @@ class SecureMessageBuilder {
   // used by the recipient of the {@link SecureMessage} to identify an
   // appropriate key to use for decrypting the message body.
   //
-  SecureMessageBuilder* SetDecryptionKeyId(const string& decryption_key_id);
+  SecureMessageBuilder* SetDecryptionKeyId(
+      const std::string& decryption_key_id);
 
   //
   // Additional data is "associated" with this {@link SecureMessage}, but will
@@ -99,7 +101,7 @@ class SecureMessageBuilder {
   // "offline dictionary attack". That is, when no encryption is used, you will
   // not be hiding this data simply because it is not being sent over the wire.
   //
-  SecureMessageBuilder* SetAssociatedData(const string& associated_data);
+  SecureMessageBuilder* SetAssociatedData(const std::string& associated_data);
 
   //
   // Generates a signed {@link SecureMessage} with the payload {@code body} left
@@ -118,7 +120,7 @@ class SecureMessageBuilder {
   //
   std::unique_ptr<SecureMessage> BuildSignedCleartextMessage(
       const CryptoOps::Key& signing_key, CryptoOps::SigType sig_type,
-      const string& body);
+      const std::string& body);
 
   //
   // Generates a signed and encrypted {@link SecureMessage}. If the signature
@@ -150,7 +152,7 @@ class SecureMessageBuilder {
   std::unique_ptr<SecureMessage> BuildSignCryptedMessage(
       const CryptoOps::Key& signing_key, CryptoOps::SigType sig_type,
       const CryptoOps::SecretKey& encryption_key, CryptoOps::EncType enc_type,
-      const string& body);
+      const std::string& body);
 
  private:
   std::unique_ptr<ByteBuffer> public_metadata_;
@@ -161,9 +163,10 @@ class SecureMessageBuilder {
   // @param iv IV or {@code null} if IV to be left unset in the Header
   std::unique_ptr<Header> BuildHeader(CryptoOps::SigType sig_type,
                                       CryptoOps::EncType enc_type,
-                                      const std::unique_ptr<string>& iv);
+                                      const std::unique_ptr<std::string>& iv);
 
-  ByteBuffer SerializeHeaderAndBody(const string& header, const string& body);
+  ByteBuffer SerializeHeaderAndBody(const std::string& header,
+                                    const std::string& body);
 
   std::unique_ptr<SecureMessage> CreateSignedResult(
       const CryptoOps::Key& signing_key, const CryptoOps::SigType& sig_type,

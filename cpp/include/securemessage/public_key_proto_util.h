@@ -20,7 +20,7 @@
 #include <memory>
 #include "securemessage/common.h"
 #include "securemessage/crypto_ops.h"
-#include "securemessage.pb.h"
+#include "proto/securemessage.pb.h"
 
 namespace securemessage {
 

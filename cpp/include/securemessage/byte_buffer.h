@@ -106,6 +106,12 @@ class ByteBuffer {
   // attacks.
   bool Equals(const ByteBuffer& other) const;
 
+  // Returns true if the bytes in the other string are the same as in this
+  // buffer, false otherwise. Note: This function does NOT perform an early exit
+  // when it encounters a mismatching element in order to guard against timing
+  // attacks.
+  bool Equals(const string& other) const;
+
   // Returns a copy of the data as a printable hex string -- for easy debugging
   string AsDebugHexString() const;
 

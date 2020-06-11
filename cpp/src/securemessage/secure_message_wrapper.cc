@@ -16,96 +16,97 @@
 
 #include "securemessage/secure_message_wrapper.h"
 
-#include "securemessage.pb.h"
+#include "proto/securemessage.pb.h"
 #include "securemessage/util.h"
 
 namespace securemessage {
 
-std::unique_ptr<string> SecureMessageWrapper::ParseHeaderIv(
-    const string& header_and_body_bytes) {
+std::unique_ptr<std::string> SecureMessageWrapper::ParseHeaderIv(
+    const std::string& header_and_body_bytes) {
   HeaderAndBody header_and_body;
   header_and_body.ParseFromString(header_and_body_bytes);
   if (header_and_body.has_header() && header_and_body.header().has_iv()) {
-    return std::unique_ptr<string>(new string(
-        header_and_body.header().iv()));
+    return std::unique_ptr<std::string>(
+        new std::string(header_and_body.header().iv()));
   } else {
     return nullptr;
   }
 }
 
-std::unique_ptr<string> SecureMessageWrapper::ParseHeader(
-    const string& header_and_body_bytes) {
+std::unique_ptr<std::string> SecureMessageWrapper::ParseHeader(
+    const std::string& header_and_body_bytes) {
   HeaderAndBody header_and_body;
   header_and_body.ParseFromString(header_and_body_bytes);
   if (header_and_body.has_header()) {
-    return std::unique_ptr<string>(new string(
-        header_and_body.header().SerializeAsString()));
+    return std::unique_ptr<std::string>(
+        new std::string(header_and_body.header().SerializeAsString()));
   } else {
     return nullptr;
   }
 }
 
-std::unique_ptr<string> SecureMessageWrapper::ParseInternalHeader(
-    const string& header_and_body_bytes) {
+std::unique_ptr<std::string> SecureMessageWrapper::ParseInternalHeader(
+    const std::string& header_and_body_bytes) {
   HeaderAndBodyInternal header_and_body;
   header_and_body.ParseFromString(header_and_body_bytes);
   if (header_and_body.has_header()) {
-    return std::unique_ptr<string>(
-        new string(header_and_body.header()));
+    return std::unique_ptr<std::string>(
+        new std::string(header_and_body.header()));
   } else {
     return nullptr;
   }
 }
 
-std::unique_ptr<string> SecureMessageWrapper::ParseBody(
-    const string& header_and_body_bytes) {
+std::unique_ptr<std::string> SecureMessageWrapper::ParseBody(
+    const std::string& header_and_body_bytes) {
   HeaderAndBody header_and_body;
   header_and_body.ParseFromString(header_and_body_bytes);
   if (header_and_body.has_body()) {
-    return std::unique_ptr<string>(new string(
-        header_and_body.body()));
+    return std::unique_ptr<std::string>(
+        new std::string(header_and_body.body()));
   } else {
     return nullptr;
   }
 }
 
-std::unique_ptr<string> SecureMessageWrapper::BuildHeaderAndBody(
-    const string& header_bytes, const string& body_bytes) {
+std::unique_ptr<std::string> SecureMessageWrapper::BuildHeaderAndBody(
+    const std::string& header_bytes, const std::string& body_bytes) {
   HeaderAndBody header_and_body;
   Header* header = header_and_body.mutable_header();
   header->ParseFromString(header_bytes);
   header_and_body.set_body(body_bytes);
 
-  return std::unique_ptr<string>(new string(
-      header_and_body.SerializeAsString()));
+  return std::unique_ptr<std::string>(
+      new std::string(header_and_body.SerializeAsString()));
 }
 
-int SecureMessageWrapper::GetSignatureScheme(const string& header_bytes) {
+int SecureMessageWrapper::GetSignatureScheme(const std::string& header_bytes) {
   Header header;
   header.ParseFromString(header_bytes);
   return header.signature_scheme();
 }
 
-int SecureMessageWrapper::GetEncryptionScheme(const string& header_bytes) {
+int SecureMessageWrapper::GetEncryptionScheme(const std::string& header_bytes) {
   Header header;
   header.ParseFromString(header_bytes);
   return header.encryption_scheme();
 }
 
-bool SecureMessageWrapper::HasDecryptionKeyId(const string& header_bytes) {
+bool SecureMessageWrapper::HasDecryptionKeyId(const std::string& header_bytes) {
   Header header;
   header.ParseFromString(header_bytes);
   return header.has_decryption_key_id();
 }
 
-bool SecureMessageWrapper::HasVerificationKeyId(const string& header_bytes) {
+bool SecureMessageWrapper::HasVerificationKeyId(
+    const std::string& header_bytes) {
   Header header;
   header.ParseFromString(header_bytes);
   return header.has_verification_key_id();
 }
 
 uint32_t SecureMessageWrapper::GetAssociatedDataLength(
-    const string& header_bytes) {
+    const std::string& header_bytes) {
   Header header;
   header.ParseFromString(header_bytes);
   return header.associated_data_length();

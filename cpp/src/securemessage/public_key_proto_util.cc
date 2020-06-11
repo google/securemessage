@@ -52,8 +52,8 @@ unique_ptr<GenericPublicKey> PublicKeyProtoUtil::EncodePublicKey(
 
 unique_ptr<EcP256PublicKey> PublicKeyProtoUtil::EncodeEcPublicKey(
     const CryptoOps::PublicKey& key) {
-  string x;
-  string y;
+  std::string x;
+  std::string y;
   if (!CryptoOps::ExportEcP256Key(key, &x, &y)) {
     return nullptr;
   }
@@ -66,7 +66,7 @@ unique_ptr<EcP256PublicKey> PublicKeyProtoUtil::EncodeEcPublicKey(
 
 unique_ptr<SimpleRsaPublicKey> PublicKeyProtoUtil::EncodeRsaPublicKey(
     const CryptoOps::PublicKey& key) {
-  string n;
+  std::string n;
   int32_t e;
   if (!CryptoOps::ExportRsa2048Key(key, &n, &e)) {
     return nullptr;

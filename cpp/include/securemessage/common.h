@@ -19,6 +19,8 @@
 
 #include <string>
 
+#ifndef HAS_GLOBAL_STRING
 using std::string;
+#endif
 
 #endif  // SECUREMESSAGE_COMMON_H_

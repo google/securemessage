@@ -317,7 +317,6 @@ class CryptoOps {
   // Generates a 2048 bit RSA key pair
   static std::unique_ptr<KeyPair> GenerateRsa2048KeyPair();
 
- private:
   //
   // @return SHA-256(UTF-8 encoded input)
   //
@@ -326,6 +325,19 @@ class CryptoOps {
   //
   static std::unique_ptr<ByteBuffer> Sha256(const ByteBuffer& message);
 
+  //
+  // @return SHA-512(UTF-8 encoded input)
+  //
+  // Will return a 64 byte ByteBuffer representing the SHA512 of the input bytes
+  // Will return a nullptr if an internal error occurs
+  //
+  static std::unique_ptr<ByteBuffer> Sha512(const ByteBuffer& message);
+
+  // Returns a ByteBuffer of |length|, which is filled with securely generated
+  // random values.
+  static std::unique_ptr<ByteBuffer> SecureRandom(size_t length);
+
+ private:
   //
   // @return SHA256HMAC of specified message using provided key or nullptr on
   // error

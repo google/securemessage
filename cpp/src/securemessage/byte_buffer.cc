@@ -149,6 +149,10 @@ bool ByteBuffer::Equals(const ByteBuffer& other) const {
   return (result == 0);
 }
 
+bool ByteBuffer::Equals(const string& other) const {
+  return Equals(ByteBuffer(other));
+}
+
 string ByteBuffer::AsDebugHexString() const {
   if (data_.size() == 0) {
     return string();

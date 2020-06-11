@@ -152,7 +152,7 @@ bool RawSecureMessageParser::VerifyHeaderAndBody(
 
   if (header == nullptr) {
     Util::LogError("message must have header");
-    return nullptr;
+    return false;
   }
 
   // Does not return early in order to avoid timing attacks
