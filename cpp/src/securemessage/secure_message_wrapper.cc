@@ -142,6 +142,7 @@ int SecureMessageWrapper::GetEncScheme(CryptoOps::EncType enc_type) {
 
   // This should never happen and is undefined behavior if it does.
   Util::LogErrorAndAbort("wrong enctype");
+  abort();
 }
 
 }  // namespace securemessage
