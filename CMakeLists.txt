@@ -19,6 +19,10 @@ project(securemessage)
 option(securemessage_USE_LOCAL_PROTOBUF
        "Use local copy of protobuf library and compiler" OFF)
 
+# Do not install gtest since we are embedding googletest.
+option(INSTALL_GTEST "Do not install gtest since we are embedding googletest" OFF)
+option(BYPASS_TESTING "Do not build or run tests" OFF)
+
 include(cmake/proto_defs.cmake)
 include(cmake/local_build_setup.cmake)
 
@@ -33,6 +37,10 @@ enable_testing()
 
 add_subdirectory(cpp)
 add_subdirectory(proto)
-if (NOT TARGET gtest)
-add_subdirectory(third_party/gtest)
+
+if (NOT BYPASS_TESTING)
+  if (NOT TARGET gtest)
+    add_subdirectory(third_party/gtest)
+   endif()
 endif()
+
