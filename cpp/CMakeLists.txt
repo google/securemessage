@@ -14,4 +14,7 @@
 
 set(SECUREMESSAGE_CPP_ROOT ${CMAKE_CURRENT_LIST_DIR})
 add_subdirectory(src/securemessage)
-add_subdirectory(test/securemessage)
+
+if (NOT BYPASS_TESTING)
+  add_subdirectory(test/securemessage)
+endif()
